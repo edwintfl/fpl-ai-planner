@@ -85,14 +85,28 @@ else:
     players["score"] = players["id"].apply(weighted_score)
 
 # --------------------------
+# Info / Legend
+# --------------------------
+st.markdown("## ℹ️ How to Read the Stats")
+st.write("""
+- **Form** → FPL’s recent performance rating (higher = in form).
+- **PPG** → Average FPL points per game this season.
+- **FPL_ep_next** → Official FPL projected points for next GW.
+- **OurScore** → AI’s weighted rating (ep_next + form + PPG + fixture ease).
+- **Price (£m)** → Player’s current cost in millions.
+""")
+
+# --------------------------
 # Debug table
 # --------------------------
 with st.expander("🔍 Player Projections Debug"):
-    dbg = players[["web_name","team_name","element_type","form","points_per_game","ep_next","score"]].copy()
+    dbg = players[["web_name","team_name","element_type","now_cost","form","points_per_game","ep_next","score"]].copy()
+    dbg["now_cost"] = dbg["now_cost"] / 10  # convert to £m
     dbg.rename(columns={
         "web_name":"Name",
         "team_name":"Team",
         "element_type":"Pos",
+        "now_cost":"Price (£m)",
         "form":"Form",
         "points_per_game":"PPG",
         "ep_next":"FPL_ep_next",
@@ -123,4 +137,4 @@ if team_id and gw_back > 0:
 # Placeholder for transfer logic
 # --------------------------
 st.subheader("🚧 Transfer planner logic will plug in here")
-st.info("This version focuses on stability + debug tools. Next step: re-add the transfer engine.")
+st.info("This version fixes price formatting & adds stat explanations.")

@@ -55,6 +55,12 @@ fixtures_df = pd.DataFrame(fixtures())
 team_map = dict(zip(teams.id, teams.name))
 players["team_name"] = players["team"].map(team_map)
 
+# map element_type -> position label and order
+pos_map = {1: "GKP", 2: "DEF", 3: "MID", 4: "FWD"}
+pos_order_map = {"GKP": 0, "DEF": 1, "MID": 2, "FWD": 3}
+players["Pos"] = players["element_type"].map(pos_map)
+players["PosOrder"] = players["Pos"].map(pos_order_map)
+
 # --------------------------
 # Weighted scoring
 # --------------------------
@@ -71,7 +77,7 @@ def weighted_score(pid, horizon=horizon):
     for gw in range(horizon):
         try:
             fdr = next_fix.iloc[gw]["team_h_difficulty"] if next_fix.iloc[gw]["team_h"]==row["team"] else next_fix.iloc[gw]["team_a_difficulty"]
-            diffs.append(6 - safe_float(fdr))
+            diffs.append(6 - safe_float(fdr))  # higher = easier
         except Exception:
             pass
     avg_diff = np.mean(diffs) if diffs else 3.0
@@ -89,30 +95,40 @@ else:
 # --------------------------
 st.markdown("## ℹ️ How to Read the Stats")
 st.write("""
+- **Pos** → Player position: GKP, DEF, MID, FWD (ordered GK → DEF → MID → FWD).
+- **Price (£m)** → Player’s current cost in millions.
 - **Form** → FPL’s recent performance rating (higher = in form).
 - **PPG** → Average FPL points per game this season.
 - **FPL_ep_next** → Official FPL projected points for next GW.
-- **OurScore** → AI’s weighted rating (ep_next + form + PPG + fixture ease).
-- **Price (£m)** → Player’s current cost in millions.
+- **OurScore** → AI’s weighted rating (ep_next + form + PPG + fixture ease over your horizon).
 """)
 
 # --------------------------
-# Debug table
+# Debug table (cleaned)
 # --------------------------
 with st.expander("🔍 Player Projections Debug"):
-    dbg = players[["web_name","team_name","element_type","now_cost","form","points_per_game","ep_next","score"]].copy()
-    dbg["now_cost"] = dbg["now_cost"] / 10  # convert to £m
+    dbg = players[[
+        "web_name","team_name","Pos","PosOrder","now_cost",
+        "form","points_per_game","ep_next","score"
+    ]].copy()
+
+    # price formatting
+    dbg["now_cost"] = dbg["now_cost"] / 10  # £m
+
     dbg.rename(columns={
-        "web_name":"Name",
-        "team_name":"Team",
-        "element_type":"Pos",
-        "now_cost":"Price (£m)",
-        "form":"Form",
-        "points_per_game":"PPG",
-        "ep_next":"FPL_ep_next",
-        "score":"OurScore"
+        "web_name": "Name",
+        "team_name": "Team",
+        "now_cost": "Price (£m)",
+        "form": "Form",
+        "points_per_game": "PPG",
+        "ep_next": "FPL_ep_next",
+        "score": "OurScore"
     }, inplace=True)
-    st.dataframe(dbg.sort_values("OurScore", ascending=False).head(50))
+
+    # order: GK -> DEF -> MID -> FWD, then by OurScore desc
+    dbg = dbg.sort_values(["PosOrder","OurScore"], ascending=[True, False]).reset_index(drop=True)
+    # hide helper column PosOrder from display
+    st.dataframe(dbg.drop(columns=["PosOrder"]).head(50))
 
 # --------------------------
 # Backtest helper
@@ -129,7 +145,8 @@ if team_id and gw_back > 0:
         merged = picks.merge(players, left_on="element", right_on="id", how="left")
         merged["Predicted"] = merged["score"]
         merged["Actual"] = merged["total_points"]
-        st.dataframe(merged[["web_name","Predicted","Actual"]])
+        out = merged[["web_name","Predicted","Actual"]].rename(columns={"web_name":"Name"})
+        st.dataframe(out)
     except Exception as e:
         st.warning(f"Could not load backtest data: {e}")
 
@@ -137,4 +154,4 @@ if team_id and gw_back > 0:
 # Placeholder for transfer logic
 # --------------------------
 st.subheader("🚧 Transfer planner logic will plug in here")
-st.info("This version fixes price formatting & adds stat explanations.")
+st.info("Positions and ordering fixed. Next step: re-add the transfer engine.")

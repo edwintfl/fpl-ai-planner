@@ -59,18 +59,9 @@ def weighted_score(pid, horizon=horizon):
     ep_next = row["ep_next"]
     form = float(row["form"])
     ppg = float(row["points_per_game"])
-    # fixture difficulty (next h horizon)
-    team_id = row["team"]
-    next_fix = fixtures_df[(fixtures_df["team_h"]==row["team"])|(fixtures_df["team_a"]==row["team"])]
-    diffs = []
-    for gw in range(horizon):
-        try:
-            fdr = next_fix.iloc[gw]["team_h_difficulty"] if next_fix.iloc[gw]["team_h"]==row["team"] else next_fix.iloc[gw]["team_a_difficulty"]
-            diffs.append(6-fdr)  # invert, 1 easy → 5 hard
-        except:
-            pass
-    avg_diff = np.mean(diffs) if diffs else 3
+    # ...
     return 0.5*ep_next + 0.3*form + 0.2*ppg + 0.2*avg_diff
+
 
 if projection_mode=="Raw FPL ep_next":
     players["score"] = players["ep_next"]

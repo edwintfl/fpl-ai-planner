@@ -2,12 +2,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import requests
-from datetime import datetime
 
 API = "https://fantasy.premierleague.com/api"
 
 # --------------------------
-# Utility
+# Utility functions
 # --------------------------
 @st.cache_data(ttl=900)
 def get_json(url):
@@ -22,11 +21,16 @@ def fixtures():
     return get_json(f"{API}/fixtures/")
 
 def get_team(team_id, gw=None):
-    # current picks
     if gw is None:
         return get_json(f"{API}/my-team/{team_id}/")
     else:
         return get_json(f"{API}/entry/{team_id}/event/{gw}/picks/")
+
+def safe_float(x):
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return 0.0
 
 # --------------------------
 # Sidebar controls
@@ -47,35 +51,52 @@ players = pd.DataFrame(boot["elements"])
 teams = pd.DataFrame(boot["teams"])
 fixtures_df = pd.DataFrame(fixtures())
 
-# merge team names
+# map team names
 team_map = dict(zip(teams.id, teams.name))
-players["team"] = players["team"].map(team_map)
+players["team_name"] = players["team"].map(team_map)
 
 # --------------------------
-# Projection logic
+# Weighted scoring
 # --------------------------
 def weighted_score(pid, horizon=horizon):
     row = players.loc[players["id"]==pid].iloc[0]
-    ep_next = row["ep_next"]
-    form = float(row["form"])
-    ppg = float(row["points_per_game"])
-    # ...
+
+    ep_next = safe_float(row.get("ep_next"))
+    form = safe_float(row.get("form"))
+    ppg = safe_float(row.get("points_per_game"))
+
+    # fixture difficulty (next horizon GWs)
+    next_fix = fixtures_df[(fixtures_df["team_h"]==row["team"]) | (fixtures_df["team_a"]==row["team"])]
+    diffs = []
+    for gw in range(horizon):
+        try:
+            fdr = next_fix.iloc[gw]["team_h_difficulty"] if next_fix.iloc[gw]["team_h"]==row["team"] else next_fix.iloc[gw]["team_a_difficulty"]
+            diffs.append(6 - safe_float(fdr))
+        except Exception:
+            pass
+    avg_diff = np.mean(diffs) if diffs else 3.0
+
     return 0.5*ep_next + 0.3*form + 0.2*ppg + 0.2*avg_diff
 
-
-if projection_mode=="Raw FPL ep_next":
-    players["score"] = players["ep_next"]
+# assign scores
+if projection_mode == "Raw FPL ep_next":
+    players["score"] = players["ep_next"].apply(safe_float)
 else:
     players["score"] = players["id"].apply(weighted_score)
 
 # --------------------------
-# Show debug table
+# Debug table
 # --------------------------
 with st.expander("🔍 Player Projections Debug"):
-    dbg = players[["web_name","team","element_type","form","points_per_game","ep_next","score"]].copy()
+    dbg = players[["web_name","team_name","element_type","form","points_per_game","ep_next","score"]].copy()
     dbg.rename(columns={
-        "web_name":"Name","team":"Team","element_type":"Pos",
-        "form":"Form","points_per_game":"PPG","ep_next":"FPL_ep_next","score":"OurScore"
+        "web_name":"Name",
+        "team_name":"Team",
+        "element_type":"Pos",
+        "form":"Form",
+        "points_per_game":"PPG",
+        "ep_next":"FPL_ep_next",
+        "score":"OurScore"
     }, inplace=True)
     st.dataframe(dbg.sort_values("OurScore", ascending=False).head(50))
 
@@ -83,9 +104,9 @@ with st.expander("🔍 Player Projections Debug"):
 # Backtest helper
 # --------------------------
 st.sidebar.markdown("---")
-gw_back = st.sidebar.number_input("Backtest: pick past GW", min_value=1, max_value=38, value=0)
+gw_back = st.sidebar.number_input("Backtest: pick past GW", min_value=0, max_value=38, value=0)
 
-if team_id and gw_back>0:
+if team_id and gw_back > 0:
     try:
         hist = get_team(team_id, gw_back)
         picks = pd.DataFrame(hist["picks"])
@@ -99,7 +120,7 @@ if team_id and gw_back>0:
         st.warning(f"Could not load backtest data: {e}")
 
 # --------------------------
-# Future: transfer planner (placeholder)
+# Placeholder for transfer logic
 # --------------------------
-st.subheader("🚧 Transfer planner logic here (uses score column)")
-st.info("Your existing transfer logic will plug in here — this version adds debug + toggle + backtest.")
+st.subheader("🚧 Transfer planner logic will plug in here")
+st.info("This version focuses on stability + debug tools. Next step: re-add the transfer engine.")
